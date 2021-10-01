@@ -11,14 +11,24 @@ use web3::Transport;
 use web3::{api::Web3, BatchTransport};
 
 /// Default options to be applied to `MethodBuilder` or `ViewMethodBuilder`.
-#[derive(Clone, Debug, Default)]
-pub struct MethodDefaults {
+#[derive(Clone, Debug)]
+pub struct MethodDefaults<T: Transport + Send + Sync + 'static> {
     /// Default sender of the transaction with the signing strategy to use.
-    pub from: Option<Account>,
+    pub from: Option<Account<T>>,
     /// Default gas amount to use for transaction.
     pub gas: Option<U256>,
     /// Default gas price to use for transaction.
     pub gas_price: Option<GasPrice>,
+}
+
+impl<T: Transport + Send + Sync + 'static> Default for MethodDefaults<T> {
+    fn default() -> Self {
+        Self {
+            from: None,
+            gas: None,
+            gas_price: None,
+        }
+    }
 }
 
 /// Data used for building a contract method call or transaction. The method
@@ -26,7 +36,7 @@ pub struct MethodDefaults {
 /// transactions. This is useful when dealing with view functions.
 #[derive(Debug, Clone)]
 #[must_use = "methods do nothing unless you `.call()` or `.send()` them"]
-pub struct MethodBuilder<T: Transport, R: Tokenize> {
+pub struct MethodBuilder<T: Transport + Send + Sync + 'static, R: Tokenize> {
     web3: Web3<T>,
     function: Function,
     /// transaction parameters
@@ -34,7 +44,7 @@ pub struct MethodBuilder<T: Transport, R: Tokenize> {
     _result: PhantomData<R>,
 }
 
-impl<T: Transport> MethodBuilder<T, ()> {
+impl<T: Transport + Send + Sync + 'static> MethodBuilder<T, ()> {
     /// Creates a new builder for a transaction invoking the fallback method.
     pub fn fallback(web3: Web3<T>, address: Address, data: Bytes) -> Self {
         // NOTE: We create a fake `Function` entry for the fallback method. This
@@ -52,7 +62,7 @@ impl<T: Transport> MethodBuilder<T, ()> {
     }
 }
 
-impl<T: Transport, R: Tokenize> MethodBuilder<T, R> {
+impl<T: Transport + Send + Sync + 'static, R: Tokenize> MethodBuilder<T, R> {
     /// Creates a new builder for a transaction.
     pub fn new(web3: Web3<T>, function: Function, address: Address, data: Bytes) -> Self {
         MethodBuilder {
@@ -64,7 +74,7 @@ impl<T: Transport, R: Tokenize> MethodBuilder<T, R> {
     }
 
     /// Apply method defaults to this builder.
-    pub fn with_defaults(mut self, defaults: &MethodDefaults) -> Self {
+    pub fn with_defaults(mut self, defaults: &MethodDefaults<T>) -> Self {
         self.tx.from = self.tx.from.or_else(|| defaults.from.clone());
         self.tx.gas = self.tx.gas.or(defaults.gas);
         self.tx.gas_price = self.tx.gas_price.or(defaults.gas_price);
@@ -73,7 +83,7 @@ impl<T: Transport, R: Tokenize> MethodBuilder<T, R> {
 
     /// Specify the signing method to use for the transaction, if not specified
     /// the the transaction will be locally signed with the default user.
-    pub fn from(mut self, value: Account) -> Self {
+    pub fn from(mut self, value: Account<T>) -> Self {
         self.tx = self.tx.from(value);
         self
     }
@@ -147,14 +157,14 @@ impl<T: Transport, R: Tokenize> MethodBuilder<T, R> {
 /// directly send transactions and is for read only method calls.
 #[derive(Debug, Clone)]
 #[must_use = "view methods do nothing unless you `.call()` them"]
-pub struct ViewMethodBuilder<T: Transport, R: Tokenize> {
+pub struct ViewMethodBuilder<T: Transport + Send + Sync + 'static, R: Tokenize> {
     /// method parameters
     pub m: MethodBuilder<T, R>,
     /// optional block number
     pub block: Option<BlockId>,
 }
 
-impl<T: Transport, R: Tokenize> ViewMethodBuilder<T, R> {
+impl<T: Transport + Send + Sync + 'static, R: Tokenize> ViewMethodBuilder<T, R> {
     /// Create a new `ViewMethodBuilder` by demoting a `MethodBuilder`.
     pub fn from_method(method: MethodBuilder<T, R>) -> Self {
         ViewMethodBuilder {
@@ -164,7 +174,7 @@ impl<T: Transport, R: Tokenize> ViewMethodBuilder<T, R> {
     }
 
     /// Apply method defaults to this builder.
-    pub fn with_defaults(mut self, defaults: &MethodDefaults) -> Self {
+    pub fn with_defaults(mut self, defaults: &MethodDefaults<T>) -> Self {
         self.m = self.m.with_defaults(defaults);
         self
     }
@@ -204,7 +214,7 @@ impl<T: Transport, R: Tokenize> ViewMethodBuilder<T, R> {
     }
 }
 
-impl<T: Transport, R: Tokenize> ViewMethodBuilder<T, R> {
+impl<T: Transport + Send + Sync + 'static, R: Tokenize> ViewMethodBuilder<T, R> {
     /// Call a contract method. Contract calls do not modify the blockchain and
     /// as such do not require gas or signing.
     pub async fn call(self) -> Result<R, MethodError> {

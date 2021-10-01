@@ -17,7 +17,7 @@ use web3::Transport;
 ///
 /// this allows generated contracts to be deployable without having to create
 /// new builder and future types.
-pub trait Deploy<T: Transport>: Sized {
+pub trait Deploy<T: Transport + Send + Sync + 'static>: Sized {
     /// The type of the contract instance being created.
     type Context;
 
@@ -41,7 +41,7 @@ pub trait Deploy<T: Transport>: Sized {
 #[must_use = "deploy builers do nothing unless you `.deploy()` them"]
 pub struct DeployBuilder<T, I>
 where
-    T: Transport,
+    T: Transport + Send + Sync + 'static,
     I: Deploy<T>,
 {
     /// The underlying `web3` provider.
@@ -55,7 +55,7 @@ where
 
 impl<T, I> DeployBuilder<T, I>
 where
-    T: Transport,
+    T: Transport + Send + Sync + 'static,
     I: Deploy<T>,
 {
     /// Create a new deploy builder from a `web3` provider, contract data and
@@ -94,7 +94,7 @@ where
 
     /// Specify the signing method to use for the transaction, if not specified
     /// the the transaction will be locally signed with the default user.
-    pub fn from(mut self, value: Account) -> Self {
+    pub fn from(mut self, value: Account<T>) -> Self {
         self.tx = self.tx.from(value);
         self
     }

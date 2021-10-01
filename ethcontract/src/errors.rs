@@ -112,6 +112,10 @@ pub enum ExecutionError {
     /// Unexpected transaction hash
     #[error("transaction hash returned from node when sending raw transaction does not match expected hash")]
     UnexpectedTransactionHash,
+
+    /// Error running stronghold.
+    #[error("stronghold error: {0}")]
+    Stronghold(String),
 }
 
 impl From<Web3Error> for ExecutionError {

@@ -8,6 +8,7 @@ use crate::errors::ExecutionError;
 use crate::secret::{Password, PrivateKey};
 use crate::transaction::gas_price::GasPrice;
 use crate::transaction::{Account, TransactionBuilder};
+use iota_stronghold::{ProcResult, Procedure, ResultMessage};
 use web3::api::Web3;
 use web3::types::{
     Address, Bytes, CallRequest, RawTransaction, SignedTransaction, TransactionCondition,
@@ -15,7 +16,7 @@ use web3::types::{
 };
 use web3::Transport;
 
-impl<T: Transport> TransactionBuilder<T> {
+impl<T: Transport + Send + Sync + 'static> TransactionBuilder<T> {
     /// Build a prepared transaction that is ready to send.
     ///
     /// Can resolve into either a `TransactionRequest` for sending locally
@@ -71,6 +72,39 @@ impl<T: Transport> TransactionBuilder<T> {
                         bytes: signed.raw_transaction,
                         hash: signed.transaction_hash,
                     })?
+            }
+            Some(Account::Stronghold(stronghold, accounts, private_key, chain_id)) => {
+                let account = Account::Stronghold(
+                    stronghold.clone(),
+                    accounts.clone(),
+                    private_key.clone(),
+                    chain_id,
+                );
+                let address = account.address();
+                match stronghold
+                    .web3_runtime_exec(Procedure::Web3SignTransaction {
+                        accounts,
+                        private_key,
+                        tx: build_transaction_parameters(
+                            self.web3, address, chain_id, gas_price, options,
+                        )
+                        .await?,
+                    })
+                    .await
+                {
+                    ProcResult::Web3SignTransaction(t) => match t {
+                        ResultMessage::Ok(signed) => Transaction::Raw {
+                            bytes: signed.raw_transaction,
+                            hash: signed.transaction_hash,
+                        },
+                        ResultMessage::Error(e) => return Err(ExecutionError::Stronghold(e)),
+                    },
+                    _ => {
+                        return Err(ExecutionError::Stronghold(
+                            "unexpected response on Web3Transaction procedure call".into(),
+                        ))
+                    }
+                }
             }
         };
 
@@ -213,28 +247,39 @@ async fn build_offline_signed_transaction<T: Transport>(
     gas_price: GasPrice,
     options: TransactionOptions,
 ) -> Result<SignedTransaction, ExecutionError> {
-    let gas = resolve_gas_limit(&web3, key.public_address(), gas_price, &options).await?;
-    let gas_price = gas_price.resolve(&web3).await?;
-
     let signed = web3
         .accounts()
         .sign_transaction(
-            TransactionParameters {
-                nonce: options.nonce,
-                gas_price: Some(gas_price),
-                gas,
-                to: options.to,
-                value: options.value.unwrap_or_default(),
-                data: options.data.unwrap_or_default(),
-                chain_id,
-                transaction_type: None,
-                access_list: None,
-            },
+            build_transaction_parameters(web3, key.public_address(), chain_id, gas_price, options)
+                .await?,
             &key,
         )
         .await?;
 
     Ok(signed)
+}
+
+async fn build_transaction_parameters<T: Transport>(
+    web3: Web3<T>,
+    public_address: Address,
+    chain_id: Option<u64>,
+    gas_price: GasPrice,
+    options: TransactionOptions,
+) -> Result<TransactionParameters, ExecutionError> {
+    let gas = resolve_gas_limit(&web3, public_address, gas_price, &options).await?;
+    let gas_price = gas_price.resolve(&web3).await?;
+
+    Ok(TransactionParameters {
+        nonce: options.nonce,
+        gas_price: Some(gas_price),
+        gas,
+        to: options.to,
+        value: options.value.unwrap_or_default(),
+        data: options.data.unwrap_or_default(),
+        chain_id,
+        transaction_type: None,
+        access_list: None,
+    })
 }
 
 async fn resolve_gas_limit<T: Transport>(

@@ -7,7 +7,7 @@ use crate::transaction::{ResolveCondition, Transaction, TransactionBuilder};
 use web3::types::{TransactionReceipt, H256, U64};
 use web3::Transport;
 
-impl<T: Transport> TransactionBuilder<T> {
+impl<T: Transport + Send + Sync + 'static> TransactionBuilder<T> {
     /// Sign (if required) and send the transaction. Returns the transaction
     /// hash that can be used to retrieve transaction information.
     pub async fn send(mut self) -> Result<TransactionResult, ExecutionError> {

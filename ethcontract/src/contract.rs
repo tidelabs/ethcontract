@@ -59,14 +59,14 @@ impl<P, R> From<H32> for Signature<P, R> {
 /// Represents a contract instance at an address. Provides methods for
 /// contract interaction.
 #[derive(Debug, Clone)]
-pub struct Instance<T: Transport> {
+pub struct Instance<T: Transport + Send + Sync + 'static> {
     web3: Web3<T>,
     abi: Abi,
     address: Address,
     deployment_information: Option<DeploymentInformation>,
     /// Default method parameters to use when sending method transactions or
     /// querying method calls.
-    pub defaults: MethodDefaults,
+    pub defaults: MethodDefaults<T>,
     /// A mapping from method signature to a name-index pair for accessing
     /// functions in the contract ABI. This is used to avoid allocation when
     /// searching for matching functions by signature.
@@ -76,7 +76,7 @@ pub struct Instance<T: Transport> {
     events: HashMap<H256, (String, usize)>,
 }
 
-impl<T: Transport> Instance<T> {
+impl<T: Transport + Send + Sync + 'static> Instance<T> {
     /// Creates a new contract instance with the specified `web3` provider with
     /// the given `Abi` at the given `Address`.
     ///
@@ -329,14 +329,14 @@ impl Linker {
         params: P,
     ) -> Result<DeployBuilder<T, Instance<T>>, DeployError>
     where
-        T: Transport,
+        T: Transport + Send + Sync + 'static,
         P: Tokenize,
     {
         DeployBuilder::new(web3, self, params)
     }
 }
 
-impl<T: Transport> Deploy<T> for Instance<T> {
+impl<T: Transport + Send + Sync + 'static> Deploy<T> for Instance<T> {
     type Context = Linker;
 
     fn abi(cx: &Self::Context) -> &Abi {

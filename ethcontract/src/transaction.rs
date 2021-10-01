@@ -12,13 +12,14 @@ pub use self::gas_price::GasPrice;
 pub use self::send::TransactionResult;
 use crate::errors::ExecutionError;
 use crate::secret::{Password, PrivateKey};
-use web3::api::Web3;
+use iota_stronghold::{Location, ProcResult, Procedure, ResultMessage, Stronghold};
+use web3::api::{Accounts, Web3};
 use web3::types::{Address, Bytes, CallRequest, TransactionCondition, U256};
 use web3::Transport;
 
 /// The account type used for signing the transaction.
 #[derive(Clone, Debug)]
-pub enum Account {
+pub enum Account<T: Transport + Send + Sync + 'static> {
     /// Let the node sign for a transaction with an unlocked account.
     Local(Address, Option<TransactionCondition>),
     /// Do online signing with a locked account with a password.
@@ -26,15 +27,41 @@ pub enum Account {
     /// Do offline signing with private key and optionally specify chain ID. If
     /// no chain ID is specified, then it will default to the network ID.
     Offline(PrivateKey, Option<u64>),
+    /// Use stronghold for signing using the key stored on the given `Location` and optionally specify chain ID.
+    Stronghold(Stronghold, Accounts<T>, Location, Option<u64>),
 }
 
-impl Account {
+impl<T: Transport + Send + Sync + 'static> Account<T> {
     /// Returns the public address of an account.
     pub fn address(&self) -> Address {
         match self {
             Account::Local(address, _) => *address,
             Account::Locked(address, _, _) => *address,
             Account::Offline(key, _) => key.public_address(),
+            Account::Stronghold(stronghold, accounts, private_key, _) => {
+                let accounts = accounts.clone();
+                let private_key = private_key.clone();
+                futures::executor::block_on(async move {
+                    match stronghold
+                        .web3_runtime_exec(Procedure::Web3Address {
+                            accounts,
+                            private_key,
+                        })
+                        .await
+                    {
+                        ProcResult::Web3Address(address) => match address {
+                            ResultMessage::Error(e) => {
+                                panic!("failed to get web3 address from stronghold: {}", e)
+                            }
+                            ResultMessage::Ok(address) => address,
+                        },
+                        ProcResult::Error(e) => {
+                            panic!("error getting web3 address from stronghold: {}", e)
+                        }
+                        _ => panic!("unexpected Web3Address stronghold response"),
+                    }
+                })
+            }
         }
     }
 }
@@ -67,11 +94,11 @@ impl Default for ResolveCondition {
 /// signed offline.
 #[derive(Clone, Debug)]
 #[must_use = "transactions do nothing unless you `.build()` or `.send()` them"]
-pub struct TransactionBuilder<T: Transport> {
+pub struct TransactionBuilder<T: Transport + Send + Sync + 'static> {
     web3: Web3<T>,
     /// The sender of the transaction with the signing strategy to use. Defaults
     /// to locally signing on the node with the default acount.
-    pub from: Option<Account>,
+    pub from: Option<Account<T>>,
     /// The receiver of the transaction.
     pub to: Option<Address>,
     /// Optional gas amount to use for transaction. Defaults to estimated gas.
@@ -91,7 +118,7 @@ pub struct TransactionBuilder<T: Transport> {
     pub resolve: Option<ResolveCondition>,
 }
 
-impl<T: Transport> TransactionBuilder<T> {
+impl<T: Transport + Send + Sync + 'static> TransactionBuilder<T> {
     /// Creates a new builder for a transaction.
     pub fn new(web3: Web3<T>) -> Self {
         TransactionBuilder {
@@ -109,7 +136,7 @@ impl<T: Transport> TransactionBuilder<T> {
 
     /// Specify the signing method to use for the transaction, if not specified
     /// the the transaction will be locally signed with the default user.
-    pub fn from(mut self, value: Account) -> Self {
+    pub fn from(mut self, value: Account<T>) -> Self {
         self.from = Some(value);
         self
     }
@@ -392,5 +419,78 @@ mod tests {
         transport.assert_request("eth_blockNumber", &[]);
         transport.assert_request("eth_getTransactionReceipt", &[json!(tx_hash)]);
         transport.assert_no_more_requests();
+    }
+
+    async fn init_account() -> (Location, Stronghold) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let system = actix::System::new();
+            let stronghold = system
+                .block_on(Stronghold::init_stronghold_system(b"path".to_vec(), vec![]))
+                .unwrap();
+            tx.send(stronghold).unwrap();
+            system.run().expect("actix system run failed");
+        });
+        let stronghold = rx.recv().unwrap();
+
+        let keypair_location = Location::generic("SR25519", "keypair");
+
+        match stronghold
+            .runtime_exec(Procedure::Secp256k1Store {
+                key: [5; 32].to_vec(),
+                output: keypair_location.clone(),
+                hint: [0u8; 24].into(),
+            })
+            .await
+        {
+            ProcResult::Secp256k1Generate(ResultMessage::OK) => (),
+            r => panic!("unexpected result: {:?}", r),
+        }
+
+        (keypair_location, stronghold)
+    }
+
+    #[tokio::test]
+    async fn tx_send_stronghold() {
+        let mut transport = TestTransport::new();
+        let web3 = Web3::new(transport.clone());
+        let accounts = web3.accounts();
+        let chain_id = 77777;
+
+        let to = addr!("0x0123456789012345678901234567890123456789");
+        let hash = hash!("0x6752d1a9ccd104cb4bb42cfd6cd5cef957fd0e9411198f8d8daf35e71bb441ba");
+        let (private_key, stronghold) = init_account().await;
+        let from = Account::Stronghold(stronghold, accounts, private_key, Some(chain_id));
+
+        transport.add_response(json!(hash)); // tansaction hash
+
+        let builder = TransactionBuilder::new(web3)
+            .from(from)
+            .to(to)
+            .gas(1.into())
+            .gas_price(2.into())
+            .value(28.into())
+            .data(Bytes(vec![0x13, 0x37]))
+            .nonce(42.into());
+        let tx_raw = builder
+            .clone()
+            .build()
+            .await
+            .expect("failed to sign transaction")
+            .raw()
+            .expect("offline transactions always build into raw transactions");
+        let tx = builder
+            .resolve(ResolveCondition::Pending)
+            .send()
+            .await
+            .expect("failed to send transaction");
+
+        // assert that all the parameters are being used
+        transport.assert_request("eth_sendRawTransaction", &[json!(tx_raw)]);
+
+        transport.assert_no_more_requests();
+
+        // assert the tx hash is what we expect it to be
+        assert_eq!(tx.hash(), hash);
     }
 }
