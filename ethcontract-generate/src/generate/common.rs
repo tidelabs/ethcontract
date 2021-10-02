@@ -171,13 +171,15 @@ pub(crate) fn expand(cx: &Context) -> TokenStream {
 
             /// Returns a reference to the default method options used by this
             /// contract.
-            pub fn defaults(&self) -> &self::ethcontract::contract::MethodDefaults {
+            pub fn defaults(&self) -> &self::ethcontract::contract::MethodDefaults<self::ethcontract::transport::DynTransport>
+            {
                 &self.raw_instance().defaults
             }
 
             /// Returns a mutable reference to the default method options used
             /// by this contract.
-            pub fn defaults_mut(&mut self) -> &mut self::ethcontract::contract::MethodDefaults {
+            pub fn defaults_mut(&mut self) -> &mut self::ethcontract::contract::MethodDefaults<self::ethcontract::transport::DynTransport>
+            {
                 &mut self.raw_instance_mut().defaults
             }
 

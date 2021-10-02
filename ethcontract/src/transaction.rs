@@ -19,7 +19,7 @@ use web3::Transport;
 
 /// The account type used for signing the transaction.
 #[derive(Clone, Debug)]
-pub enum Account<T: Transport + Send + Sync + 'static> {
+pub enum Account<T: Transport + Send + Sync + 'static = web3::transports::Http> {
     /// Let the node sign for a transaction with an unlocked account.
     Local(Address, Option<TransactionCondition>),
     /// Do online signing with a locked account with a password.
