@@ -1,6 +1,7 @@
 [package]
 name = "ethcontract-derive"
 version = "0.15.3"
+publish = false
 authors = ["Gnosis developers <developers@gnosis.io>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
