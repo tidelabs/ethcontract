@@ -8,3 +8,5 @@ examples/*/artifacts
 examples/*/cache
 
 .idea
+
+target
