@@ -47,7 +47,7 @@ thiserror = "1.0"
 uint = "0.9"
 web3 = { version = "0.17", default-features = false, features = ["signing"] }
 zeroize = "1.1"
-iota_stronghold = { git = "https://tributary.semantic-network.tech/semnet/Libs/stronghold.rs", branch = "feat/bump-substrate" }
+iota_stronghold = { git = "https://tributary.semantic-network.tech/semnet/stronghold.rs", branch = "dev" }
 
 [dev-dependencies]
 hex-literal = "0.3"
