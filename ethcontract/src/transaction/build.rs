@@ -190,6 +190,8 @@ impl TransactionRequestOptions {
             condition: self.1,
             transaction_type: None,
             access_list: None,
+            max_fee_per_gas: None,
+            max_priority_fee_per_gas: None,
         }
     }
 }
@@ -279,6 +281,8 @@ async fn build_transaction_parameters<T: Transport>(
         chain_id,
         transaction_type: None,
         access_list: None,
+        max_fee_per_gas: None,
+        max_priority_fee_per_gas: None,
     })
 }
 
@@ -302,6 +306,8 @@ async fn resolve_gas_limit<T: Transport>(
                     data: options.data.clone(),
                     transaction_type: None,
                     access_list: None,
+                    max_fee_per_gas: None,
+                    max_priority_fee_per_gas: None,
                 },
                 None,
             )
