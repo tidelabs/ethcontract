@@ -522,6 +522,7 @@ impl Parse for Method {
                     Ok(Param {
                         name: "".into(),
                         kind,
+                        internal_type: None,
                     })
                 })
                 .collect::<ParseResult<Vec<_>>>()?;
@@ -534,7 +535,7 @@ impl Parse for Method {
                 // NOTE: The output types and const-ness of the function do not
                 //   affect its signature.
                 outputs: vec![],
-                constant: false,
+                constant: None,
                 state_mutability: Default::default(),
             }
         };
