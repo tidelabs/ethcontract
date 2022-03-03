@@ -224,6 +224,8 @@ impl<T: Transport + Send + Sync + 'static> TransactionBuilder<T> {
                     data: self.data.clone(),
                     transaction_type: None,
                     access_list: None,
+                    max_fee_per_gas: None,
+                    max_priority_fee_per_gas: None,
                 },
                 None,
             )

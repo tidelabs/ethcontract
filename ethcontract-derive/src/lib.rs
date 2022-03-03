@@ -535,7 +535,7 @@ impl Parse for Method {
                 // NOTE: The output types and const-ness of the function do not
                 //   affect its signature.
                 outputs: vec![],
-                constant: None,
+                constant: Some(false),
                 state_mutability: Default::default(),
             }
         };

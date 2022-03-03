@@ -3,7 +3,7 @@
 use crate::Abi;
 use crate::{bytecode::Bytecode, DeploymentInformation};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use web3::types::Address;
 
 /// Represents a contract data.
@@ -37,11 +37,11 @@ impl Contract {
             name: name.into(),
             abi: Abi {
                 constructor: None,
-                functions: BTreeMap::new(),
-                events: BTreeMap::new(),
+                functions: Default::default(),
+                events: Default::default(),
                 fallback: false,
                 receive: false,
-                errors: BTreeMap::new(),
+                errors: Default::default(),
             },
             bytecode: Default::default(),
             networks: HashMap::new(),

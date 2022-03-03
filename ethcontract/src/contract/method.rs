@@ -55,7 +55,7 @@ impl<T: Transport + Send + Sync + 'static> MethodBuilder<T, ()> {
             name: "fallback".into(),
             inputs: vec![],
             outputs: vec![],
-            constant: false,
+            constant: Some(false),
             state_mutability: Default::default(),
         };
         MethodBuilder::new(web3, function, address, data)
@@ -248,6 +248,8 @@ impl<T: Transport + Send + Sync + 'static, R: Tokenize> ViewMethodBuilder<T, R> 
                 data: self.m.tx.data,
                 transaction_type: None,
                 access_list: None,
+                max_fee_per_gas: None,
+                max_priority_fee_per_gas: None,
             },
             self.block,
         )
@@ -293,8 +295,9 @@ mod tests {
             outputs: vec![Param {
                 name: "".to_owned(),
                 kind: ParamType::Uint(256),
+                internal_type: None,
             }],
-            constant: false,
+            constant: Some(false),
             state_mutability: Default::default(),
         };
         let data = function
