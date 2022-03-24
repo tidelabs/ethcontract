@@ -1,3 +1,5 @@
+# fork of ethcontract-rs with Stronghold-based signer
+
 [![Build Status](https://travis-ci.org/gnosis/ethcontract-rs.svg?branch=main)](https://travis-ci.org/gnosis/ethcontract-rs)
 [![Crates.io](https://img.shields.io/crates/v/ethcontract.svg)](https://crates.io/crates/ethcontract)
 [![Docs.rs](https://docs.rs/ethcontract/badge.svg)](https://docs.rs/ethcontract)
