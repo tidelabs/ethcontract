@@ -52,4 +52,4 @@ iota_stronghold = { git = "https://github.com/tidelabs/stronghold.rs", branch = 
 [dev-dependencies]
 hex-literal = "0.3"
 tokio = { version = "1.6", features = ["macros"] }
-actix = "0.12"
+actix = "0.13"
