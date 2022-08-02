@@ -8,7 +8,7 @@ use crate::errors::ExecutionError;
 use crate::secret::{Password, PrivateKey};
 use crate::transaction::gas_price::GasPrice;
 use crate::transaction::{Account, TransactionBuilder};
-use iota_stronghold::{ProcResult, Procedure, ResultMessage};
+use iota_stronghold::procedures::{SignedTx, Web3SignTransaction};
 use web3::api::Web3;
 use web3::types::{
     Address, Bytes, CallRequest, RawTransaction, SignedTransaction, TransactionCondition,
@@ -81,30 +81,59 @@ impl<T: Transport + Send + Sync + 'static> TransactionBuilder<T> {
                     chain_id,
                 );
                 let address = account.address();
-                match stronghold
-                    .web3_runtime_exec(Procedure::Web3SignTransaction {
-                        accounts,
-                        private_key,
-                        tx: build_transaction_parameters(
-                            self.web3, address, chain_id, gas_price, options,
-                        )
-                        .await?,
-                    })
-                    .await
-                {
-                    ProcResult::Web3SignTransaction(t) => match t {
-                        ResultMessage::Ok(signed) => Transaction::Raw {
-                            bytes: signed.raw_transaction,
-                            hash: signed.transaction_hash,
-                        },
-                        ResultMessage::Error(e) => return Err(ExecutionError::Stronghold(e)),
-                    },
-                    _ => {
-                        return Err(ExecutionError::Stronghold(
-                            "unexpected response on Web3Transaction procedure call".into(),
-                        ))
+
+                let tx =
+                    build_transaction_parameters(self.web3, address, chain_id, gas_price, options)
+                        .await?;
+
+                let proc = Web3SignTransaction {
+                    accounts,
+                    private_key,
+                    tx: tx,
+                };
+                let client = stronghold
+                    .get_client(b"client_path".to_vec())
+                    .map_err(|e| ExecutionError::Stronghold(e.to_string()))?;
+
+                match client.execute_web3_procedure(proc) {
+                    Ok(result) => {
+                        let res: Vec<u8> = result.into();
+
+                        let signed_tx: SignedTx = bincode::deserialize(&res)
+                            .map_err(|e| ExecutionError::Stronghold(e.to_string()))?;
+
+                        Transaction::Raw {
+                            bytes: signed_tx.raw_transaction.into(),
+                            hash: signed_tx.transaction_hash,
+                        }
                     }
+                    Err(e) => return Err(ExecutionError::Stronghold(e.to_string())),
                 }
+
+                // match stronghold
+                //     .web3_runtime_exec(Procedure::Web3SignTransaction {
+                //         accounts,
+                //         private_key,
+                //         tx: build_transaction_parameters(
+                //             self.web3, address, chain_id, gas_price, options,
+                //         )
+                //         .await?,
+                //     })
+                //     .await
+                // {
+                //     ProcResult::Web3SignTransaction(t) => match t {
+                //         ResultMessage::Ok(signed) => Transaction::Raw {
+                //             bytes: signed.raw_transaction,
+                //             hash: signed.transaction_hash,
+                //         },
+                //         ResultMessage::Error(e) => return Err(ExecutionError::Stronghold(e)),
+                //     },
+                //     _ => {
+                //         return Err(ExecutionError::Stronghold(
+                //             "unexpected response on Web3Transaction procedure call".into(),
+                //         ))
+                //     }
+                // }
             }
         };
 

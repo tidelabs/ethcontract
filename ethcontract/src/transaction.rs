@@ -12,7 +12,7 @@ pub use self::gas_price::GasPrice;
 pub use self::send::TransactionResult;
 use crate::errors::ExecutionError;
 use crate::secret::{Password, PrivateKey};
-use iota_stronghold::{Location, ProcResult, Procedure, ResultMessage, Stronghold};
+use iota_stronghold::{procedures::Web3Address, Location, Stronghold};
 use web3::api::{Accounts, Web3};
 use web3::types::{Address, Bytes, CallRequest, TransactionCondition, U256};
 use web3::Transport;
@@ -41,26 +41,46 @@ impl<T: Transport + Send + Sync + 'static> Account<T> {
             Account::Stronghold(stronghold, accounts, private_key, _) => {
                 let accounts = accounts.clone();
                 let private_key = private_key.clone();
-                futures::executor::block_on(async move {
-                    match stronghold
-                        .web3_runtime_exec(Procedure::Web3Address {
-                            accounts,
-                            private_key,
-                        })
-                        .await
-                    {
-                        ProcResult::Web3Address(address) => match address {
-                            ResultMessage::Error(e) => {
-                                panic!("failed to get web3 address from stronghold: {}", e)
-                            }
-                            ResultMessage::Ok(address) => address,
-                        },
-                        ProcResult::Error(e) => {
-                            panic!("error getting web3 address from stronghold: {}", e)
-                        }
-                        _ => panic!("unexpected Web3Address stronghold response"),
+                let client = stronghold
+                    .get_client(b"client_path".to_vec())
+                    .expect("failed to load stronghold client");
+
+                let proc = Web3Address {
+                    accounts,
+                    private_key,
+                };
+
+                match client.execute_web3_procedure(proc) {
+                    Ok(address) => {
+                        let res: Vec<u8> = address.into();
+                        let mut buff = [0u8; 20];
+                        buff.copy_from_slice(&res);
+
+                        buff.into()
                     }
-                })
+                    Err(e) => panic!("failed to get web3 address from stronghold: {}", e),
+                }
+
+                // futures::executor::block_on(async move {
+                //     match stronghold
+                //         .web3_runtime_exec(Procedure::Web3Address {
+                //             accounts,
+                //             private_key,
+                //         })
+                //         .await
+                //     {
+                //         ProcResult::Web3Address(address) => match address {
+                //             ResultMessage::Error(e) => {
+                //                 panic!("failed to get web3 address from stronghold: {}", e)
+                //             }
+                //             ResultMessage::Ok(address) => address,
+                //         },
+                //         ProcResult::Error(e) => {
+                //             panic!("error getting web3 address from stronghold: {}", e)
+                //         }
+                //         _ => panic!("unexpected Web3Address stronghold response"),
+                //     }
+                // })
             }
         }
     }
@@ -424,30 +444,22 @@ mod tests {
     }
 
     async fn init_account() -> (Location, Stronghold) {
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let system = actix::System::new();
-            let stronghold = system
-                .block_on(Stronghold::init_stronghold_system(b"path".to_vec(), vec![]))
-                .unwrap();
-            tx.send(stronghold).unwrap();
-            system.run().expect("actix system run failed");
-        });
-        let stronghold = rx.recv().unwrap();
+        use iota_stronghold::procedures::WriteVault;
 
-        let keypair_location = Location::generic("SR25519", "keypair");
+        let client_path = b"client_path".to_vec();
 
-        match stronghold
-            .runtime_exec(Procedure::Secp256k1Store {
-                key: [5; 32].to_vec(),
-                output: keypair_location.clone(),
-                hint: [0u8; 24].into(),
-            })
-            .await
-        {
-            ProcResult::Secp256k1Generate(ResultMessage::OK) => (),
-            r => panic!("unexpected result: {:?}", r),
-        }
+        let stronghold = Stronghold::default();
+        let client = stronghold.create_client(client_path).unwrap();
+
+        let keypair_location = Location::generic("secp256k1", "keypair");
+        let data = [5; 32];
+
+        let proc = WriteVault {
+            data: data.to_vec(),
+            location: keypair_location.clone(),
+        };
+
+        client.execute_procedure(proc).unwrap();
 
         (keypair_location, stronghold)
     }
