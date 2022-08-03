@@ -42,7 +42,7 @@ impl<T: Transport + Send + Sync + 'static> Account<T> {
                 let accounts = accounts.clone();
                 let private_key = private_key.clone();
                 let client = stronghold
-                    .get_client(client_id)
+                    .load_client(client_id)
                     .expect("failed to load stronghold client");
 
                 let proc = Web3Address {

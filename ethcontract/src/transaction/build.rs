@@ -93,7 +93,7 @@ impl<T: Transport + Send + Sync + 'static> TransactionBuilder<T> {
                     tx: tx,
                 };
                 let client = stronghold
-                    .get_client(b"client_path".to_vec())
+                    .load_client(&client_path)
                     .map_err(|e| ExecutionError::Stronghold(e.to_string()))?;
 
                 match client.execute_web3_procedure(proc) {
