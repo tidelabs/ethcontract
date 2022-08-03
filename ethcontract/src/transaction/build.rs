@@ -73,9 +73,10 @@ impl<T: Transport + Send + Sync + 'static> TransactionBuilder<T> {
                         hash: signed.transaction_hash,
                     })?
             }
-            Some(Account::Stronghold(stronghold, accounts, private_key, chain_id)) => {
+            Some(Account::Stronghold(stronghold, client_path, accounts, private_key, chain_id)) => {
                 let account = Account::Stronghold(
                     stronghold.clone(),
+                    client_path.clone(),
                     accounts.clone(),
                     private_key.clone(),
                     chain_id,

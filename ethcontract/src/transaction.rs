@@ -28,7 +28,7 @@ pub enum Account<T: Transport + Send + Sync + 'static = web3::transports::Http> 
     /// no chain ID is specified, then it will default to the network ID.
     Offline(PrivateKey, Option<u64>),
     /// Use stronghold for signing using the key stored on the given `Location` and optionally specify chain ID.
-    Stronghold(Stronghold, Accounts<T>, Location, Option<u64>),
+    Stronghold(Stronghold, Vec<u8>, Accounts<T>, Location, Option<u64>),
 }
 
 impl<T: Transport + Send + Sync + 'static> Account<T> {
@@ -38,11 +38,11 @@ impl<T: Transport + Send + Sync + 'static> Account<T> {
             Account::Local(address, _) => *address,
             Account::Locked(address, _, _) => *address,
             Account::Offline(key, _) => key.public_address(),
-            Account::Stronghold(stronghold, accounts, private_key, _) => {
+            Account::Stronghold(stronghold, client_id, accounts, private_key, _) => {
                 let accounts = accounts.clone();
                 let private_key = private_key.clone();
                 let client = stronghold
-                    .get_client(b"client_path".to_vec())
+                    .get_client(client_id)
                     .expect("failed to load stronghold client");
 
                 let proc = Web3Address {
@@ -60,27 +60,6 @@ impl<T: Transport + Send + Sync + 'static> Account<T> {
                     }
                     Err(e) => panic!("failed to get web3 address from stronghold: {}", e),
                 }
-
-                // futures::executor::block_on(async move {
-                //     match stronghold
-                //         .web3_runtime_exec(Procedure::Web3Address {
-                //             accounts,
-                //             private_key,
-                //         })
-                //         .await
-                //     {
-                //         ProcResult::Web3Address(address) => match address {
-                //             ResultMessage::Error(e) => {
-                //                 panic!("failed to get web3 address from stronghold: {}", e)
-                //             }
-                //             ResultMessage::Ok(address) => address,
-                //         },
-                //         ProcResult::Error(e) => {
-                //             panic!("error getting web3 address from stronghold: {}", e)
-                //         }
-                //         _ => panic!("unexpected Web3Address stronghold response"),
-                //     }
-                // })
             }
         }
     }
@@ -470,11 +449,18 @@ mod tests {
         let web3 = Web3::new(transport.clone());
         let accounts = web3.accounts();
         let chain_id = 77777;
+        let client_path = b"client_path".to_vec();
 
         let to = addr!("0x0123456789012345678901234567890123456789");
         let hash = hash!("0x6752d1a9ccd104cb4bb42cfd6cd5cef957fd0e9411198f8d8daf35e71bb441ba");
         let (private_key, stronghold) = init_account().await;
-        let from = Account::Stronghold(stronghold, accounts, private_key, Some(chain_id));
+        let from = Account::Stronghold(
+            stronghold,
+            client_path,
+            accounts,
+            private_key,
+            Some(chain_id),
+        );
 
         transport.add_response(json!(hash)); // tansaction hash
 
