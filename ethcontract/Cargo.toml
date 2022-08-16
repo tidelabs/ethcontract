@@ -47,7 +47,7 @@ thiserror = "1.0"
 uint = "0.9"
 web3 = { git = "https://github.com/tomusdrw/rust-web3", rev = "8796c88c4cb95864bdfeffb40ebb061c283aca74", default-features = false, features = ["signing"] }
 zeroize = "1.1"
-iota_stronghold = {git = "https://tributary.semantic-network.tech/semnet/Libs/stronghold.rs", branch = "feat/update-stronghold", features = ["webthree"]}
+iota_stronghold = {git = "https://github.com/tidelabs/stronghold.rs", branch = "dev", features = ["webthree"]}
 bincode = "1.3"
 
 [dev-dependencies]
