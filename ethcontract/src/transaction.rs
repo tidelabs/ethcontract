@@ -12,7 +12,7 @@ pub use self::gas_price::GasPrice;
 pub use self::send::TransactionResult;
 use crate::errors::ExecutionError;
 use crate::secret::{Password, PrivateKey};
-use iota_stronghold::{Location, ProcResult, Procedure, ResultMessage, Stronghold};
+use iota_stronghold::{procedures::Web3Address, Location, Stronghold};
 use web3::api::{Accounts, Web3};
 use web3::types::{Address, Bytes, CallRequest, TransactionCondition, U256};
 use web3::Transport;
@@ -28,7 +28,7 @@ pub enum Account<T: Transport + Send + Sync + 'static = web3::transports::Http> 
     /// no chain ID is specified, then it will default to the network ID.
     Offline(PrivateKey, Option<u64>),
     /// Use stronghold for signing using the key stored on the given `Location` and optionally specify chain ID.
-    Stronghold(Stronghold, Accounts<T>, Location, Option<u64>),
+    Stronghold(Stronghold, Vec<u8>, Accounts<T>, Location, Option<u64>),
 }
 
 impl<T: Transport + Send + Sync + 'static> Account<T> {
@@ -38,29 +38,28 @@ impl<T: Transport + Send + Sync + 'static> Account<T> {
             Account::Local(address, _) => *address,
             Account::Locked(address, _, _) => *address,
             Account::Offline(key, _) => key.public_address(),
-            Account::Stronghold(stronghold, accounts, private_key, _) => {
+            Account::Stronghold(stronghold, client_id, accounts, private_key, _) => {
                 let accounts = accounts.clone();
                 let private_key = private_key.clone();
-                futures::executor::block_on(async move {
-                    match stronghold
-                        .web3_runtime_exec(Procedure::Web3Address {
-                            accounts,
-                            private_key,
-                        })
-                        .await
-                    {
-                        ProcResult::Web3Address(address) => match address {
-                            ResultMessage::Error(e) => {
-                                panic!("failed to get web3 address from stronghold: {}", e)
-                            }
-                            ResultMessage::Ok(address) => address,
-                        },
-                        ProcResult::Error(e) => {
-                            panic!("error getting web3 address from stronghold: {}", e)
-                        }
-                        _ => panic!("unexpected Web3Address stronghold response"),
+                let client = stronghold
+                    .load_client(client_id)
+                    .expect("failed to load stronghold client");
+
+                let proc = Web3Address {
+                    accounts,
+                    private_key,
+                };
+
+                match client.execute_web3_procedure(proc) {
+                    Ok(address) => {
+                        let res: Vec<u8> = address.into();
+                        let mut buff = [0u8; 20];
+                        buff.copy_from_slice(&res);
+
+                        buff.into()
                     }
-                })
+                    Err(e) => panic!("failed to get web3 address from stronghold: {}", e),
+                }
             }
         }
     }
@@ -424,30 +423,22 @@ mod tests {
     }
 
     async fn init_account() -> (Location, Stronghold) {
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let system = actix::System::new();
-            let stronghold = system
-                .block_on(Stronghold::init_stronghold_system(b"path".to_vec(), vec![]))
-                .unwrap();
-            tx.send(stronghold).unwrap();
-            system.run().expect("actix system run failed");
-        });
-        let stronghold = rx.recv().unwrap();
+        use iota_stronghold::procedures::WriteVault;
 
-        let keypair_location = Location::generic("SR25519", "keypair");
+        let client_path = b"client_path".to_vec();
 
-        match stronghold
-            .runtime_exec(Procedure::Secp256k1Store {
-                key: [5; 32].to_vec(),
-                output: keypair_location.clone(),
-                hint: [0u8; 24].into(),
-            })
-            .await
-        {
-            ProcResult::Secp256k1Generate(ResultMessage::OK) => (),
-            r => panic!("unexpected result: {:?}", r),
-        }
+        let stronghold = Stronghold::default();
+        let client = stronghold.create_client(client_path).unwrap();
+
+        let keypair_location = Location::generic("secp256k1", "keypair");
+        let data = [5; 32];
+
+        let proc = WriteVault {
+            data: data.to_vec(),
+            location: keypair_location.clone(),
+        };
+
+        client.execute_procedure(proc).unwrap();
 
         (keypair_location, stronghold)
     }
@@ -458,11 +449,18 @@ mod tests {
         let web3 = Web3::new(transport.clone());
         let accounts = web3.accounts();
         let chain_id = 77777;
+        let client_path = b"client_path".to_vec();
 
         let to = addr!("0x0123456789012345678901234567890123456789");
         let hash = hash!("0x6752d1a9ccd104cb4bb42cfd6cd5cef957fd0e9411198f8d8daf35e71bb441ba");
         let (private_key, stronghold) = init_account().await;
-        let from = Account::Stronghold(stronghold, accounts, private_key, Some(chain_id));
+        let from = Account::Stronghold(
+            stronghold,
+            client_path,
+            accounts,
+            private_key,
+            Some(chain_id),
+        );
 
         transport.add_response(json!(hash)); // tansaction hash
 

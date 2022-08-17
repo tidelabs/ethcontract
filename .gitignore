@@ -10,3 +10,4 @@ examples/*/cache
 .idea
 
 target
+.DS_Store
