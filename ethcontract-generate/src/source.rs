@@ -90,8 +90,13 @@ impl Source {
     ///
     /// [Etherscan]: etherscan.io
     /// [unpkg]: unpkg.io
+
     pub fn parse(source: &str) -> Result<Self> {
-        let root = env::current_dir()?.canonicalize()?;
+        let root = if cfg!(not(windows)) {
+            env::current_dir()?.canonicalize()?
+        } else {
+            env::current_dir()?
+        };
         Source::with_root(root, source)
     }
 
